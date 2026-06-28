@@ -32,3 +32,8 @@ cache:
 git:
   depth: 100
 dist: precise
+
+# Disable travis runs
+branches:
+  except:
+    - /.*/
