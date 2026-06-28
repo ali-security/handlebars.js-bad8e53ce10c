@@ -38,6 +38,16 @@ describe('helpers', function() {
     shouldCompileTo(string, [{}, helpers], ' {{{{b}}}} {{{{/b}}}} ', 'raw block helper should get nested raw block as raw content');
   });
 
+  it('helper for nested raw block closes after first matching close', function() {
+    var string = '{{{{identity}}}}abc{{{{/identity}}}} {{{{identity}}}}abc{{{{/identity}}}}';
+    var helpers = {
+      identity: function(options) {
+        return options.fn();
+      }
+    };
+    shouldCompileTo(string, [{}, helpers], 'abc abc');
+  });
+
   it('helper block with identical context', function() {
     var string = '{{#goodbyes}}{{name}}{{/goodbyes}}';
     var hash = {name: 'Alan'};
