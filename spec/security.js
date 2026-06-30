@@ -118,4 +118,35 @@ describe('security issues', function() {
             }, Error, /Missing helper: "__defineGetter__"/);
         });
     });
+
+    describe('GH-1633: Prevent access to dangerous properties in strict-mode', function() {
+        var strictOptions = { strict: true };
+
+        it('should not allow dangerous properties to be accessed as the terminal of a path', function() {
+            shouldCompileTo('{{constructor}}', [{}, {}, {}, strictOptions], '');
+            shouldCompileTo('{{__defineGetter__}}', [{}, {}, {}, strictOptions], '');
+            shouldCompileTo('{{__defineSetter__}}', [{}, {}, {}, strictOptions], '');
+            shouldCompileTo('{{__lookupGetter__}}', [{}, {}, {}, strictOptions], '');
+            shouldCompileTo('{{__proto__}}', [{}, {}, {}, strictOptions], '');
+        });
+
+        it('should not allow dangerous properties to be accessed as a nested terminal', function() {
+            shouldCompileTo('{{value.constructor}}', [{ value: {} }, {}, {}, strictOptions], '');
+            shouldCompileTo('{{value.__proto__}}', [{ value: {} }, {}, {}, strictOptions], '');
+        });
+    });
+
+    describe('escapes template variables', function() {
+        it('in compat mode', function() {
+            shouldCompileTo("{{'a\\b'}}", [{ 'a\\b': 'c' }, {}, {}, { compat: true }], 'c');
+        });
+
+        it('in default mode', function() {
+            shouldCompileTo("{{'a\\b'}}", { 'a\\b': 'c' }, 'c');
+        });
+
+        it('in strict mode', function() {
+            shouldCompileTo("{{'a\\b'}}", [{ 'a\\b': 'c' }, {}, {}, { strict: true }], 'c');
+        });
+    });
 });
