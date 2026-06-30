@@ -30,6 +30,24 @@ describe('security issues', function() {
         });
     });
 
+    describe('GH-1595: dangerous properties are not enumerable by default', function() {
+        it('should not allow dangerous properties to be accessed directly', function() {
+            shouldCompileTo('{{constructor}}', {}, '');
+            shouldCompileTo('{{__defineGetter__}}', {}, '');
+            shouldCompileTo('{{__defineSetter__}}', {}, '');
+            shouldCompileTo('{{__lookupGetter__}}', {}, '');
+            shouldCompileTo('{{__proto__}}', {}, '');
+        });
+
+        it('should not allow dangerous properties to be accessed via the lookup-helper', function() {
+            shouldCompileTo('{{lookup this "constructor"}}', {}, '');
+            shouldCompileTo('{{lookup this "__defineGetter__"}}', {}, '');
+            shouldCompileTo('{{lookup this "__defineSetter__"}}', {}, '');
+            shouldCompileTo('{{lookup this "__lookupGetter__"}}', {}, '');
+            shouldCompileTo('{{lookup this "__proto__"}}', {}, '');
+        });
+    });
+
     describe('GH-1558: Prevent explicit call of helperMissing-helpers', function() {
         if (!Handlebars.compile) {
             return;
@@ -89,13 +107,15 @@ describe('security issues', function() {
     describe('GH-1563', function() {
         it('should not allow to access constructor after overriding via __defineGetter__', function() {
             if (({}).__defineGetter__ == null || ({}).__lookupGetter__ == null) {
-                return; // Browser does not support this exploit anyway
+                return this.skip(); // Browser does not support this exploit anyway
             }
-            shouldCompileTo('{{__defineGetter__ "undefined" valueOf }}' +
-                '{{#with __lookupGetter__ }}' +
-                '{{__defineGetter__ "propertyIsEnumerable" (this.bind (this.bind 1)) }}' +
-                '{{constructor.name}}' +
-                '{{/with}}', {}, '');
+            shouldThrow(function() {
+                shouldCompileTo('{{__defineGetter__ "undefined" valueOf }}' +
+                    '{{#with __lookupGetter__ }}' +
+                    '{{__defineGetter__ "propertyIsEnumerable" (this.bind (this.bind 1)) }}' +
+                    '{{constructor.name}}' +
+                    '{{/with}}', {}, '');
+            }, Error, /Missing helper: "__defineGetter__"/);
         });
     });
 });
