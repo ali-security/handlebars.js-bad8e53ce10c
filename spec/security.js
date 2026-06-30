@@ -36,6 +36,7 @@ describe('security issues', function() {
             shouldCompileTo('{{__defineGetter__}}', {}, '');
             shouldCompileTo('{{__defineSetter__}}', {}, '');
             shouldCompileTo('{{__lookupGetter__}}', {}, '');
+            shouldCompileTo('{{__lookupSetter__}}', {}, '');
             shouldCompileTo('{{__proto__}}', {}, '');
         });
 
@@ -44,6 +45,7 @@ describe('security issues', function() {
             shouldCompileTo('{{lookup this "__defineGetter__"}}', {}, '');
             shouldCompileTo('{{lookup this "__defineSetter__"}}', {}, '');
             shouldCompileTo('{{lookup this "__lookupGetter__"}}', {}, '');
+            shouldCompileTo('{{lookup this "__lookupSetter__"}}', {}, '');
             shouldCompileTo('{{lookup this "__proto__"}}', {}, '');
         });
     });
@@ -147,6 +149,157 @@ describe('security issues', function() {
 
         it('in strict mode', function() {
             shouldCompileTo("{{'a\\b'}}", [{ 'a\\b': 'c' }, {}, {}, { strict: true }], 'c');
+        });
+    });
+
+    describe('GHSA-2qvq-rjwj-gvw9: partial resolution must not use polluted prototypes', function() {
+        if (!Handlebars.compile) {
+            return;
+        }
+
+        afterEach(function() {
+            delete Object.prototype.widget;
+        });
+
+        it('should not resolve partial names from Object.prototype', function() {
+            Object.prototype.widget = '<img src=x onerror="alert(1)">'; // eslint-disable-line no-extend-native
+
+            shouldThrow(function() {
+                Handlebars.compile('<div>{{> widget}}</div>')({});
+            }, Error, /could not be found/);
+        });
+    });
+
+    describe('GHSA-2w6w-674q-4c4q, GHSA-xhpv-hc6g-r9c6, GHSA-3mfm-83xf-c92r: untrusted AST inputs', function() {
+        if (!Handlebars.compile) {
+            return;
+        }
+
+        function createInjectedProgram() {
+            return {
+                type: 'Program',
+                body: [
+                    {
+                        type: 'MustacheStatement',
+                        escaped: true,
+                        strip: {
+                            open: false,
+                            close: false
+                        },
+                        path: {
+                            type: 'PathExpression',
+                            data: false,
+                            depth: 0,
+                            parts: ['lookup'],
+                            original: 'lookup'
+                        },
+                        params: [
+                            {
+                                type: 'PathExpression',
+                                data: false,
+                                depth: 0,
+                                parts: [],
+                                original: 'this'
+                            },
+                            {
+                                type: 'NumberLiteral',
+                                value: '{},{})) + (Function) + (({}',
+                                original: 1
+                            }
+                        ]
+                    }
+                ]
+            };
+        }
+
+        it('should reject AST NumberLiteral type confusion in compile()', function() {
+            shouldThrow(function() {
+                var template = Handlebars.compile(createInjectedProgram());
+                template({});
+            }, Error, /Invalid AST/);
+        });
+
+        it('should reject AST objects passed via dynamic partial lookup', function() {
+            shouldThrow(function() {
+                var template = Handlebars.compile('{{> (lookup . "payload")}}');
+                template({
+                    payload: createInjectedProgram()
+                });
+            }, Error, /Invalid AST|could not be found/);
+        });
+    });
+
+    describe('GHSA-442j-39wm-28r2: lookup must return checked value', function() {
+        if (!Handlebars.compile) {
+            return;
+        }
+
+        it('should use the validated value from lookupProperty() in compat mode', function() {
+            var input = { child: {} };
+            var readCount = 0;
+            Object.defineProperty(input, 'unstable', {
+                enumerable: true,
+                get: function() {
+                    readCount++;
+                    return readCount === 1 ? 'first-read' : 'second-read';
+                }
+            });
+
+            shouldCompileTo('{{#with child}}{{unstable}}{{/with}}', [input, {}, {}, { compat: true }], 'first-read');
+        });
+    });
+
+    describe('GHSA-9cx6-37pm-9jff: malformed decorators should fail safely', function() {
+        if (!Handlebars.compile) {
+            return;
+        }
+
+        it('should throw a controlled error for unknown decorators', function() {
+            var template = Handlebars.compile('{{*notRegistered}}');
+            shouldThrow(function() {
+                template({});
+            }, Error, /Missing decorator|not registered/);
+        });
+    });
+
+    describe('GHSA-new: @partial-block must not resolve from polluted prototype', function() {
+        if (!Handlebars.compile) {
+            return;
+        }
+
+        afterEach(function() {
+            delete Object.prototype['partial-block'];
+        });
+
+        it('should not resolve @partial-block from Object.prototype', function() {
+            Object.prototype['partial-block'] = '<img src=x onerror="alert(1)">'; // eslint-disable-line no-extend-native
+
+            shouldThrow(function() {
+                Handlebars.compile('{{> @partial-block}}')({});
+            }, Error, /could not be found/);
+        });
+
+        it('should not resolve @partial-block from Object.prototype inside a partial', function() {
+            Object.prototype['partial-block'] = '<img src=x onerror="alert(1)">'; // eslint-disable-line no-extend-native
+
+            Handlebars.registerPartial('testPartial', '{{> @partial-block}}');
+            try {
+                shouldThrow(function() {
+                    Handlebars.compile('{{> testPartial}}')({});
+                }, Error, /could not be found/);
+            } finally {
+                Handlebars.unregisterPartial('testPartial');
+            }
+        });
+
+        it('should still render legitimate @partial-block content', function() {
+            Handlebars.registerPartial('wrapper', '<div>{{> @partial-block}}</div>');
+            try {
+                var result = Handlebars.compile('{{#> wrapper}}hello{{/wrapper}}')({});
+                equal(result, '<div>hello</div>');
+            } finally {
+                Handlebars.unregisterPartial('wrapper');
+            }
         });
     });
 });
